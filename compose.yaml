@@ -1,0 +1,15 @@
+name: nabu-embeddings
+
+services:
+  proxy:
+    image: caddy:2-alpine
+    # Loopback, not 0.0.0.0. The listener performs no client authentication, so
+    # anything that can reach the port spends the key behind it.
+    ports:
+      - "127.0.0.1:${PORT:-8082}:8082"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped

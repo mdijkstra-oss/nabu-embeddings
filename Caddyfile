@@ -1,0 +1,38 @@
+{
+	admin off
+	auto_https off
+}
+
+:8082 {
+	# route preserves the order written here. Outside one, Caddy sorts by its
+	# own directive order and the catch-all would answer the preflight.
+	route {
+		# defer holds the headers until the upstream response exists, so they
+		# survive the proxied write rather than being overwritten by it.
+		header {
+			Access-Control-Allow-Origin "{env.CORS_ORIGIN}"
+			Access-Control-Allow-Methods "POST, OPTIONS"
+			Access-Control-Allow-Headers "Content-Type, X-Session-ID, X-Project-ID"
+			Access-Control-Max-Age "86400"
+			defer
+		}
+
+		@preflight method OPTIONS
+		respond @preflight 204
+
+		respond /health "ok" 200
+
+		handle /embeddings {
+			rewrite * /v1/embeddings
+
+			reverse_proxy https://api.openai.com {
+				# Caddy forwards the client's Host, which here is the listener's
+				# own address. OpenAI needs its own.
+				header_up Host api.openai.com
+				header_up Authorization "Bearer {env.OPENAI_API_KEY}"
+			}
+		}
+
+		respond 404
+	}
+}

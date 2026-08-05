@@ -1,0 +1,9 @@
+.env
+.env.local
+.prod.env
+.prod.env.local
+.idea/
+.DS_Store
+AGENTS.md
+CLAUDE.md
+.claude/
