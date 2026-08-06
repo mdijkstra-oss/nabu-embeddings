@@ -4,9 +4,6 @@ The `/embeddings` route [nabu-frontend](https://github.com/mdijkstra-oss/nabu-fr
 
 A browser cannot hold a provider key. This is a Caddy listener that takes an OpenAI-shaped embeddings request from the frontend's origin, adds `Authorization` from the environment, and forwards it to OpenAI unchanged. The body is never read, so what the frontend sends is what OpenAI answers.
 
-> [!WARNING]
-> The frontend does not call this yet. It sends `{input}` with no `model`, which OpenAI rejects, and it has one host variable for both the agent gateway and this. [Pointing the frontend at it](#pointing-the-frontend-at-it) is what has to change.
-
 ## Running it
 
 ```sh
@@ -31,28 +28,20 @@ $ curl -s -X POST http://localhost:8082/embeddings \
 }
 ```
 
-That envelope is what `app/lib/embeddings/client.ts` already parses: `data` sorted by `index`, one float array each. A thousand and twenty-four of them, so the arrays are cut short above.
+That envelope is what `app/lib/embeddings/client.ts` parses: `data` sorted by `index`, one float array each. A thousand and twenty-four of them, so the arrays are cut short above.
 
 With no key set, the same call answers `401` from OpenAI. An error carrying OpenAI's own wording rather than Caddy's is the thing to look for, because it means the path rewrite, the `Host` override and the injected header all arrived.
 
 ## Pointing the frontend at it
 
-Three changes, all in `nabu-frontend`, none of them possible from here.
+`VITE_EMBEDDINGS_HOST` in `nabu-frontend` is this listener's address, separate from `VITE_LLM_HOST` so that the agent gateway and this can move independently.
 
-**The request needs a `model`.** `app/lib/embeddings/client.ts` builds its body as `JSON.stringify({ input })`. Sent through this listener with a working key, that body comes back:
+The model and the width travel in the body, because a proxy that forwards bodies untouched cannot supply them. `VITE_EMBEDDINGS_MODEL` and `VITE_EMBEDDINGS_DIMENSIONS` are where they come from, defaulting to `text-embedding-3-large` at `1024`.
 
-```json
-{"error": {"message": "you must provide a model parameter", "type": "invalid_request_error"}}
-```
+Neither is a preference. Every vector in a `.embeddings.hidden.md` companion was written at one model and one width, and a vector scored against another width returns a number rather than an error, so changing either is a re-embedding of the whole corpus.
 
-A proxy that forwards bodies untouched cannot supply the field.
-
-**It has to be `text-embedding-3-large` at `dimensions: 1024`.** Every vector already written to a `.embeddings.hidden.md` companion came from that model at that width. Sending anything else produces vectors that are compared against the existing ones by cosine similarity and mean nothing next to them.
-
-**The host is a second variable.** `VITE_LLM_HOST` is the agent gateway, and `getLlmHost()` in `app/lib/agent/env.ts` feeds both the chat client and every embeddings call site. Splitting them means a `VITE_EMBEDDINGS_HOST` with its own accessor, and nine call sites across eight files switched to it. Only `app/lib/agent/client/fetch.ts` keeps the old one.
-
-> [!NOTE]
-> The embedding cache keys on chunk hash alone — no model, no dimension — so changing either silently keeps every stale vector rather than re-embedding. That is a `nabu-frontend` concern, and it decides whether a model change needs the companion files wiped.
+> [!IMPORTANT]
+> A new width performs that re-embedding itself: `diffChunks` counts a stored vector of the wrong length as a chunk it has never seen. A new model at the same width does not, because nothing records which model wrote an entry. Delete every companion by hand when changing the model alone.
 
 ## What is not translated
 
@@ -88,4 +77,4 @@ There is **no client authentication**, so anything that reaches the port spends 
 
 ## Next: nabu-frontend
 
-`app/lib/embeddings/client.ts` is where the two body fields go, and `app/lib/agent/env.ts` is where the host splits in two. Neither is large; the decision that comes first is what happens to the companion files already holding 1024-float vectors, because a re-embed is cheap only while the corpus is small.
+The app that calls this. Its README covers what the vectors are made of — how a document is chunked, what a companion file holds, and the query cascade that scores one chunk against another.
