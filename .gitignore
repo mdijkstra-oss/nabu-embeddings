@@ -1,7 +1,8 @@
 .env
-.env.local
+.env.*
+!.env.example
 .prod.env
-.prod.env.local
+.prod.env.*
 .idea/
 .DS_Store
 AGENTS.md
